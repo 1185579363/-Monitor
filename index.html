@@ -587,7 +587,7 @@
         }
 
         try {
-          const response = await fetch("/api/news?pages=3", { cache: "no-store" });
+          const response = await fetch("/api/news?pages=8", { cache: "no-store" });
           if (!response.ok) {
             throw new Error("HTTP " + response.status);
           }
