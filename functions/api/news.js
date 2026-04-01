@@ -205,7 +205,7 @@ export async function onRequestGet(context) {
   const requestUrl = new URL(context.request.url);
   const pages = Math.max(
     1,
-    Math.min(20, Number.parseInt(requestUrl.searchParams.get("pages") || "3", 10) || 3),
+    Math.min(20, Number.parseInt(requestUrl.searchParams.get("pages") || "8", 10) || 8),
   );
 
   try {
