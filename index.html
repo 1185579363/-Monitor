@@ -34,6 +34,7 @@
       font-family: 'Inter', 'Noto Sans SC', sans-serif;
       -webkit-font-smoothing: antialiased;
       color: var(--text);
+      overflow-x: hidden;
     }
 
     a {
@@ -131,11 +132,13 @@
       align-items: center;
       gap: 12px;
       flex: 0 0 auto;
+      min-width: 0;
     }
 
     .search-box {
       width: 220px;
       flex: 0 0 auto;
+      min-width: 0;
     }
 
     .search-input {
@@ -277,6 +280,7 @@
       color: #3b2b0c;
       font-size: 14px;
       line-height: 1.5;
+      overflow-wrap: anywhere;
     }
 
     .jinse-summary {
@@ -284,6 +288,7 @@
       color: #695638;
       font-size: 12px;
       line-height: 1.7;
+      overflow-wrap: anywhere;
     }
 
     .jinse-summary.is-collapsed {
@@ -396,6 +401,7 @@
       font-size: 19px;
       line-height: 1.55;
       font-weight: 700;
+      overflow-wrap: anywhere;
     }
 
     .news-summary {
@@ -405,6 +411,7 @@
       line-height: 1.8;
       flex: 1 1 auto;
       text-align: justify;
+      overflow-wrap: anywhere;
     }
 
     .news-summary.is-collapsed {
@@ -597,36 +604,175 @@
     }
 
     @media (max-width: 860px) {
+      .header-inner {
+        min-height: auto;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+
+      .brand,
+      .header-actions {
+        width: 100%;
+      }
+
+      .header-actions {
+        justify-content: flex-end;
+      }
+
+      .search-box {
+        flex: 1 1 auto;
+        width: auto;
+      }
+
       .content-layout,
       .news-grid {
         grid-template-columns: 1fr;
         gap: 18px;
       }
 
+      .side-more-wrap {
+        justify-content: center;
+      }
+
     }
 
     @media (max-width: 640px) {
+      .header-inner,
+      .main-inner,
+      .footer-inner {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+
       .header-inner {
-        min-height: 64px;
+        gap: 10px;
+      }
+
+      .brand {
+        gap: 10px;
+      }
+
+      .brand-mark {
+        width: 28px;
+        height: 28px;
+        border-radius: 9px;
+      }
+
+      .brand-mark svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .brand-title {
+        font-size: 16px;
+        gap: 6px;
+      }
+
+      .brand-title small {
+        font-size: 11px;
       }
 
       .brand-subtitle {
         display: none;
       }
 
+      .header-actions {
+        gap: 10px;
+      }
+
+      .search-box {
+        order: 1;
+      }
+
+      .search-input {
+        height: 36px;
+        padding: 0 12px;
+      }
+
+      .status-light {
+        width: 10px;
+        height: 10px;
+      }
+
+      .icon-btn {
+        width: 34px;
+        min-height: 34px;
+      }
+
       .news-card,
-      .skeleton-card {
+      .skeleton-card,
+      .jinse-card {
         min-height: 0;
-        padding: 20px;
+        padding: 18px;
       }
 
       .news-title {
         font-size: 18px;
       }
 
+      .news-summary {
+        font-size: 13px;
+        line-height: 1.75;
+      }
+
+      .jinse-card h3 {
+        font-size: 13px;
+      }
+
+      .jinse-summary {
+        font-size: 12px;
+        line-height: 1.65;
+      }
+
       .card-foot {
         flex-direction: column;
         align-items: flex-start;
+      }
+
+      .card-actions,
+      .jinse-actions {
+        width: 100%;
+      }
+
+      .card-actions {
+        justify-content: space-between;
+        margin-left: 0;
+      }
+
+      .jinse-actions {
+        gap: 10px;
+      }
+
+      .jinse-actions .summary-toggle {
+        margin-left: 0;
+      }
+
+      .more-wrap {
+        margin-top: 18px;
+      }
+
+      .empty-state {
+        padding: 52px 16px;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .brand-title {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+      }
+
+      .header-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+      }
+
+      .search-box {
+        width: 100%;
       }
     }
   </style>
