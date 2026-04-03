@@ -652,11 +652,20 @@
       }
 
       .header-inner {
-        gap: 10px;
+        gap: 8px;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: space-between;
       }
 
       .brand {
-        gap: 10px;
+        width: auto;
+        flex: 1 1 auto;
+        gap: 8px;
+      }
+
+      .brand > div:last-child {
+        min-width: 0;
       }
 
       .brand-mark {
@@ -671,12 +680,28 @@
       }
 
       .brand-title {
-        font-size: 16px;
-        gap: 6px;
+        display: flex;
+        align-items: baseline;
+        gap: 5px;
+        font-size: 15px;
+        line-height: 1.15;
+        flex-wrap: nowrap;
+        min-width: 0;
       }
 
       .brand-title small {
-        font-size: 11px;
+        display: inline;
+        font-size: 10px;
+        white-space: nowrap;
+        flex: 0 0 auto;
+      }
+
+      .brand-title-text {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .brand-subtitle {
@@ -684,7 +709,10 @@
       }
 
       .header-actions {
-        gap: 10px;
+        width: auto;
+        flex: 0 0 auto;
+        margin-left: auto;
+        gap: 8px;
       }
 
       .search-box {
@@ -692,8 +720,9 @@
       }
 
       .status-light {
-        width: 10px;
-        height: 10px;
+        display: block;
+        width: 9px;
+        height: 9px;
       }
 
       .icon-btn {
@@ -760,9 +789,12 @@
 
     @media (max-width: 420px) {
       .brand-title {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 2px;
+        font-size: 14px;
+        gap: 4px;
+      }
+
+      .brand-title small {
+        font-size: 9px;
       }
 
       .header-actions {
@@ -787,7 +819,7 @@
           </svg>
         </div>
         <div>
-          <h1 class="brand-title">每日股市快讯 <small>7*24小时快讯</small></h1>
+          <h1 class="brand-title"><span class="brand-title-text">每日股市快讯</span><small>7*24小时快讯</small></h1>
           <div class="brand-subtitle" id="headerStamp">正在连接实时新闻接口</div>
         </div>
       </div>
