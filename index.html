@@ -2088,9 +2088,9 @@
     (function () {
       const THEME_STORAGE_KEY = "peopleFinanceTheme";
       const NEWS_CACHE_KEY = "peopleFinanceNewsPayloadV1";
-      const JINSE_CACHE_KEY = "peopleFinanceCryptoPayloadV1";
+      const JINSE_CACHE_KEY = "peopleFinanceCryptoPayloadV3";
       const NEWS_BOOTSTRAP_URL = "/assets/bootstrap/news.json?v=20260725";
-      const JINSE_BOOTSTRAP_URL = "/assets/bootstrap/crypto.json?v=20260725";
+      const JINSE_BOOTSTRAP_URL = "/assets/bootstrap/crypto.json?v=20260725-timefix";
       const THEMES = {
         "deep-coffee-gold": {
           label: "深咖金主题",
@@ -2189,7 +2189,8 @@
         "金色财经": "assets/source-logos/jinse.ico",
         "Foresight News": "assets/source-logos/foresight-icon.png",
         "Odaily星球日报": "assets/source-logos/odaily.svg",
-        "PANews": "assets/source-logos/panews.ico"
+        "PANews": "assets/source-logos/panews.ico",
+        "BlockBeats": "assets/source-logos/blockbeats.ico"
       });
 
       const HIGH_IMPACT_KEYWORDS = ["重大", "突发", "首个", "首次", "创新高", "大幅", "涨停", "跌停", "暴涨", "暴跌", "并购", "重组", "签约", "中标", "订单", "业绩", "净利", "增长", "减持", "增持", "处罚", "调查", "违约", "退市", "暂停"];
@@ -2452,7 +2453,7 @@
       async function loadJinse() {
         try {
           const currentVisibleJinseCount = state.visibleJinseCount || 30;
-          const response = await fetch("/api/jinse?limit=50");
+          const response = await fetch("/api/jinse?limit=100");
           if (!response.ok) {
             throw new Error("HTTP " + response.status);
           }
@@ -2941,15 +2942,6 @@
       function resolveSortTimestamp(item, sourceType) {
         const numericTimestamp = Number(item && item.timestamp);
         const parsedTimeLabel = parseTimeLabelToday(item && item.timeLabel);
-        if (sourceType === "jinse" && parsedTimeLabel) {
-          if (!Number.isFinite(numericTimestamp) || numericTimestamp <= 0) {
-            return parsedTimeLabel;
-          }
-          const normalizedNumeric = numericTimestamp < 100000000000 ? numericTimestamp * 1000 : numericTimestamp;
-          if (Math.abs(normalizedNumeric - parsedTimeLabel) > 30 * 60000) {
-            return parsedTimeLabel;
-          }
-        }
 
         if (Number.isFinite(numericTimestamp) && numericTimestamp > 0) {
           return numericTimestamp < 100000000000 ? numericTimestamp * 1000 : numericTimestamp;
@@ -3603,9 +3595,9 @@
       }
 
       function getFilteredJinseItems() {
-        return state.jinseItems.filter(function (item) {
+        return sortItems(state.jinseItems.filter(function (item) {
           return matchesSearch(item) && matchesQuickFilter(item);
-        }).slice().sort(compareLatestItems);
+        }));
       }
 
       function sortItems(items) {
@@ -3879,16 +3871,6 @@
           }
 
           const isExpanded = state.expandedIds.has(id);
-          summary.classList.add("is-collapsed");
-          const needsToggle = summary.scrollHeight - summary.clientHeight > 1;
-
-          if (!needsToggle) {
-            state.expandedIds.delete(id);
-            summary.classList.remove("is-collapsed");
-            toggle.hidden = true;
-            return;
-          }
-
           toggle.hidden = false;
           if (isExpanded) {
             summary.classList.remove("is-collapsed");
