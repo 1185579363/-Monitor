@@ -2089,6 +2089,8 @@
       const THEME_STORAGE_KEY = "peopleFinanceTheme";
       const NEWS_CACHE_KEY = "peopleFinanceNewsPayloadV1";
       const JINSE_CACHE_KEY = "peopleFinanceCryptoPayloadV1";
+      const NEWS_BOOTSTRAP_URL = "/assets/bootstrap/news.json?v=20260725";
+      const JINSE_BOOTSTRAP_URL = "/assets/bootstrap/crypto.json?v=20260725";
       const THEMES = {
         "deep-coffee-gold": {
           label: "深咖金主题",
@@ -2377,7 +2379,8 @@
         stopSpeech();
       });
 
-      restoreCachedFeeds();
+      const restoredFeeds = restoreCachedFeeds();
+      loadBootstrapFeeds(restoredFeeds);
       loadNews(false);
       loadJinse();
       window.setInterval(function () {
@@ -2485,15 +2488,50 @@
       }
 
       function restoreCachedFeeds() {
+        const restored = { news: false, jinse: false };
         const newsPayload = readCachedPayload(NEWS_CACHE_KEY);
         if (newsPayload && Array.isArray(newsPayload.items) && newsPayload.items.length) {
           applyNewsPayload(newsPayload, false, 36);
+          restored.news = true;
         }
 
         const jinsePayload = readCachedPayload(JINSE_CACHE_KEY);
         if (jinsePayload && Array.isArray(jinsePayload.items) && jinsePayload.items.length) {
           applyJinsePayload(jinsePayload, 30);
+          restored.jinse = true;
         }
+        return restored;
+      }
+
+      function loadBootstrapFeeds(restored) {
+        if (!restored.news) {
+          loadBootstrapPayload(NEWS_BOOTSTRAP_URL, function (payload) {
+            if (!state.items.length) {
+              applyNewsPayload(payload, false, 36);
+            }
+          });
+        }
+
+        if (!restored.jinse) {
+          loadBootstrapPayload(JINSE_BOOTSTRAP_URL, function (payload) {
+            if (!state.jinseItems.length) {
+              applyJinsePayload(payload, 30);
+            }
+          });
+        }
+      }
+
+      async function loadBootstrapPayload(url, applyPayload) {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            return;
+          }
+          const payload = await response.json();
+          if (Array.isArray(payload.items) && payload.items.length) {
+            applyPayload(payload);
+          }
+        } catch (error) {}
       }
 
       function applyNewsPayload(payload, forceReset, currentVisibleCount) {
