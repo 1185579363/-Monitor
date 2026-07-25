@@ -450,14 +450,50 @@ function extractForesightItems(html, limit) {
     }
     seenUrls.add(url);
     const idMatch = href.match(/\/news\/detail\/(\d+)/);
+    const itemId = idMatch ? idMatch[1] : "";
+    let timestamp = 0;
+    if (itemId) {
+      const itemStart = String(html || "").indexOf(`{id:${itemId},`);
+      if (itemStart >= 0) {
+        const publishedMatch = String(html || "")
+          .slice(itemStart, itemStart + 16000)
+          .match(/\bpublished_at:(\d{9,13})/);
+        if (publishedMatch) {
+          timestamp = Number(publishedMatch[1]);
+          if (timestamp < 100000000000) {
+            timestamp *= 1000;
+          }
+        }
+      }
+    }
+    if (!timestamp) {
+      const dateMatch = summary.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+      const timeMatch = timeLabel.match(/^(\d{1,2}):(\d{2})$/);
+      if (dateMatch && timeMatch) {
+        const currentParts = getDateParts(Date.now());
+        let year = Number(currentParts.year);
+        timestamp = Date.parse(
+          `${year}-${String(dateMatch[1]).padStart(2, "0")}-${String(dateMatch[2]).padStart(2, "0")}T${String(timeMatch[1]).padStart(2, "0")}:${timeMatch[2]}:00+08:00`,
+        );
+        if (timestamp - Date.now() > 24 * 60 * 60 * 1000) {
+          year -= 1;
+          timestamp = Date.parse(
+            `${year}-${String(dateMatch[1]).padStart(2, "0")}-${String(dateMatch[2]).padStart(2, "0")}T${String(timeMatch[1]).padStart(2, "0")}:${timeMatch[2]}:00+08:00`,
+          );
+        }
+      }
+    }
+    if (!Number.isFinite(timestamp) || timestamp <= 0) {
+      timestamp = parseTimeLabelToday(timeLabel);
+    }
     items.push({
-      id: `foresight-${idMatch ? idMatch[1] : url}`,
+      id: `foresight-${itemId || url}`,
       title,
       summary,
       timeLabel,
       source: "Foresight News",
       url,
-      timestamp: parseTimeLabelToday(timeLabel),
+      timestamp,
     });
     if (items.length >= limit) {
       break;
@@ -703,6 +739,7 @@ export async function onRequestGet(context) {
   );
   const cacheUrl = new URL(requestUrl.origin + requestUrl.pathname);
   cacheUrl.searchParams.set("limit", String(limit));
+  cacheUrl.searchParams.set("version", "foresight-timefix-1");
   const cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
   const edgeCache = caches.default;
   const cachedResponse = await edgeCache.match(cacheKey);
