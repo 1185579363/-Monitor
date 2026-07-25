@@ -6,6 +6,8 @@ const ODAILY_NEWSFLASH_URL = "https://www.odaily.news/zh-CN/newsflash";
 const ODAILY_API_URL = "https://web-api.odaily.news/newsflash/page";
 const PANEWS_NEWSFLASH_URL = "https://www.panewslab.com/zh/newsflash";
 const PANEWS_API_URL = "https://universal-api.panewslab.com/articles";
+const BLOCKBEATS_BASE_URL = "https://www.theblockbeats.info";
+const BLOCKBEATS_NEWSFLASH_URL = `${BLOCKBEATS_BASE_URL}/newsflash`;
 const SHANGHAI_TZ = "Asia/Shanghai";
 
 function absoluteUrl(url) {
@@ -42,6 +44,17 @@ function absolutePanewsUrl(id) {
     return PANEWS_NEWSFLASH_URL;
   }
   return `https://www.panewslab.com/zh/articles/${encodeURIComponent(itemId)}`;
+}
+
+function absoluteBlockbeatsUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) {
+    return BLOCKBEATS_NEWSFLASH_URL;
+  }
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return value;
+  }
+  return `${BLOCKBEATS_BASE_URL}${value}`;
 }
 
 function decodeHtml(value) {
@@ -530,6 +543,55 @@ function extractPanewsItems(payload, limit) {
   return items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 }
 
+function extractBlockbeatsItems(html, limit) {
+  const dateMatch = String(html || "").match(
+    /<div\b[^>]*class="[^"]*\bflash-list-today\b[^"]*"[^>]*>\s*(\d{4}-\d{2}-\d{2})\s*<\/div>/i,
+  );
+  const pageDate = dateMatch ? dateMatch[1] : "";
+  const pattern =
+    /<a\b([^>]*\bclass="[^"]*\bnews-flash-title\b[^"]*"[^>]*)>([\s\S]*?)<\/a>[\s\S]*?<div\b[^>]*class="[^"]*\bnews-flash-item-content\b[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
+  const items = [];
+  const seenUrls = new Set();
+  let match = null;
+
+  while ((match = pattern.exec(String(html || ""))) !== null) {
+    const attrs = match[1];
+    const hrefMatch = attrs.match(/\bhref="([^"]+)"/i);
+    const titleMatch = attrs.match(/\btitle="([^"]+)"/i);
+    const timeMatch = match[2].match(/\b(\d{1,2}:\d{2})\b/);
+    if (!hrefMatch || !titleMatch || !timeMatch) {
+      continue;
+    }
+    const url = absoluteBlockbeatsUrl(decodeHtml(hrefMatch[1]));
+    const title = stripTags(decodeHtml(titleMatch[1]));
+    const summary = stripTags(match[3]);
+    const timeLabel = timeMatch[1];
+    const parsedTimestamp = pageDate
+      ? Date.parse(`${pageDate}T${timeLabel}:00+08:00`)
+      : parseTimeLabelToday(timeLabel);
+    const timestamp = Number.isFinite(parsedTimestamp) ? parsedTimestamp : parseTimeLabelToday(timeLabel);
+    if (title.length <= 2 || summary.length <= 2 || seenUrls.has(url)) {
+      continue;
+    }
+    seenUrls.add(url);
+    const idMatch = url.match(/\/flash\/(\d+)/);
+    items.push({
+      id: `blockbeats-${idMatch ? idMatch[1] : url}`,
+      title,
+      summary,
+      timeLabel,
+      source: "BlockBeats",
+      url,
+      timestamp,
+    });
+    if (items.length >= limit) {
+      break;
+    }
+  }
+
+  return items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+}
+
 async function fetchHtmlWithRetry(url, retries = 2) {
   let lastError = null;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -637,7 +699,7 @@ export async function onRequestGet(context) {
   const requestUrl = new URL(context.request.url);
   const limit = Math.max(
     1,
-    Math.min(80, Number.parseInt(requestUrl.searchParams.get("limit") || "50", 10) || 50),
+    Math.min(100, Number.parseInt(requestUrl.searchParams.get("limit") || "100", 10) || 100),
   );
   const cacheUrl = new URL(requestUrl.origin + requestUrl.pathname);
   cacheUrl.searchParams.set("limit", String(limit));
@@ -649,7 +711,7 @@ export async function onRequestGet(context) {
   }
 
   try {
-    const [jinseHtml, foresightHtml, odailyPayload, panewsPayload] = await Promise.all([
+    const [jinseHtml, foresightHtml, odailyPayload, panewsPayload, blockbeatsHtml] = await Promise.all([
       fetchHtmlWithRetry(LIVES_URL, 2).catch(() => ""),
       fetchHtmlWithRetry(FORESIGHT_NEWS_URL, 2).catch(() => ""),
       fetchJsonWithRetry(
@@ -664,6 +726,7 @@ export async function onRequestGet(context) {
         2,
         { Referer: PANEWS_NEWSFLASH_URL, "PA-Accept-Language": "zh" },
       ).catch(() => null),
+      fetchHtmlWithRetry(BLOCKBEATS_NEWSFLASH_URL, 2).catch(() => ""),
     ]);
     const visibleItems = jinseHtml ? extractVisibleItems(jinseHtml) : [];
     const supplementItems = jinseHtml ? extractSupplementItems(jinseHtml) : [];
@@ -671,7 +734,8 @@ export async function onRequestGet(context) {
     const foresightItems = foresightHtml ? extractForesightItems(foresightHtml, limit) : [];
     const odailyItems = odailyPayload ? extractOdailyItems(odailyPayload, limit) : [];
     const panewsItems = panewsPayload ? extractPanewsItems(panewsPayload, limit) : [];
-    const items = mergeItems(jinseItems, foresightItems, odailyItems, panewsItems, limit);
+    const blockbeatsItems = blockbeatsHtml ? extractBlockbeatsItems(blockbeatsHtml, limit) : [];
+    const items = mergeItems(jinseItems, foresightItems, odailyItems, panewsItems, blockbeatsItems, limit);
     if (!items.length) {
       throw new Error("Failed to fetch Jinse, Foresight, Odaily, and PANews news");
     }
@@ -684,6 +748,7 @@ export async function onRequestGet(context) {
         foresightArticleCount: foresightItems.length,
         odailyArticleCount: odailyItems.length,
         panewsArticleCount: panewsItems.length,
+        blockbeatsArticleCount: blockbeatsItems.length,
         items,
         isLive: true,
       },
