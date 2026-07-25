@@ -841,12 +841,14 @@ function buildPayload(items, pagesFetched) {
   };
 }
 
-function jsonResponse(body, status = 200) {
+function jsonResponse(body, status = 200, cacheable = false) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
+      "cache-control": cacheable
+        ? "public, max-age=60, stale-while-revalidate=300"
+        : "no-store",
     },
   });
 }
@@ -857,6 +859,14 @@ export async function onRequestGet(context) {
     1,
     Math.min(20, Number.parseInt(requestUrl.searchParams.get("pages") || "8", 10) || 8),
   );
+  const cacheUrl = new URL(requestUrl.origin + requestUrl.pathname);
+  cacheUrl.searchParams.set("pages", String(pages));
+  const cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
+  const edgeCache = caches.default;
+  const cachedResponse = await edgeCache.match(cacheKey);
+  if (cachedResponse) {
+    return cachedResponse;
+  }
 
   try {
     const [{ items: stcnItems, pagesFetched }, jiemianItems, kejiItems, starMarketItems, jingjiGlobalItems] = await Promise.all([
@@ -876,7 +886,9 @@ export async function onRequestGet(context) {
     payload.kejiArticleCount = kejiItems.length;
     payload.starMarketArticleCount = starMarketItems.length;
     payload.jingjiGlobalArticleCount = jingjiGlobalItems.length;
-    return jsonResponse(payload, 200);
+    const response = jsonResponse(payload, 200, true);
+    context.waitUntil(edgeCache.put(cacheKey, response.clone()));
+    return response;
   } catch (error) {
     return jsonResponse(
       {
