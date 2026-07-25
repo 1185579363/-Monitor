@@ -71,6 +71,13 @@
       --brief-action-shadow: 0 1px 0 rgba(240, 130, 63, 0.05);
       --brief-action-active-bg: #e46f2e;
       --brief-action-active-text: #17110d;
+      --crypto-action-bg: linear-gradient(180deg, #2b2419 0%, #231c13 100%);
+      --crypto-action-border: #8f7440;
+      --crypto-action-text: #e2c47c;
+      --crypto-action-hover-bg: linear-gradient(180deg, #342a1c 0%, #292015 100%);
+      --crypto-action-active-bg: #a57a2e;
+      --crypto-action-active-text: #fff9eb;
+      --crypto-action-shadow: inset 0 1px 0 rgba(255, 243, 206, 0.08), 0 7px 18px -15px rgba(190, 145, 57, 0.72);
       --brief-metric-bg: rgba(34, 26, 19, 0.82);
       --brief-metric-border: rgba(243, 228, 207, 0.18);
       --brief-metric-label: #a8967d;
@@ -163,6 +170,13 @@
       --brief-action-shadow: 0 1px 0 rgba(15, 118, 110, 0.04);
       --brief-action-active-bg: #0f766e;
       --brief-action-active-text: #ffffff;
+      --crypto-action-bg: linear-gradient(180deg, #fffdf8 0%, #f7ecd4 100%);
+      --crypto-action-border: #cfaa64;
+      --crypto-action-text: #765719;
+      --crypto-action-hover-bg: linear-gradient(180deg, #fffaf0 0%, #f1dfba 100%);
+      --crypto-action-active-bg: #987026;
+      --crypto-action-active-text: #ffffff;
+      --crypto-action-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 7px 18px -15px rgba(134, 94, 25, 0.52);
       --brief-metric-bg: #ffffff;
       --brief-metric-border: #c7dcd8;
       --brief-metric-label: #47656c;
@@ -555,6 +569,26 @@
       border-color: var(--brief-action-active-bg);
       background: var(--brief-action-active-bg);
       color: var(--brief-action-active-text);
+    }
+
+    .crypto-view-btn {
+      border-color: var(--crypto-action-border);
+      background: var(--crypto-action-bg);
+      color: var(--crypto-action-text);
+      box-shadow: var(--crypto-action-shadow);
+    }
+
+    .crypto-view-btn:hover {
+      border-color: var(--crypto-action-border);
+      background: var(--crypto-action-hover-bg);
+      color: var(--crypto-action-text);
+      box-shadow: var(--crypto-action-shadow);
+    }
+
+    .crypto-view-btn.is-active {
+      border-color: var(--crypto-action-active-bg);
+      background: var(--crypto-action-active-bg);
+      color: var(--crypto-action-active-text);
     }
 
     .mobile-home-sort {
@@ -1446,37 +1480,6 @@
       display: block;
     }
 
-    .more-wrap {
-      display: flex;
-      justify-content: center;
-      margin-top: 24px;
-    }
-
-    .side-more-wrap {
-      margin-top: 4px;
-      justify-content: flex-start;
-    }
-
-    .more-btn {
-      min-height: 40px;
-      padding: 0 18px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: var(--panel);
-      color: var(--text);
-      cursor: pointer;
-      transition: background 180ms ease, transform 180ms ease;
-    }
-
-    .more-btn:hover {
-      background: var(--accent-soft);
-      transform: translateY(-1px);
-    }
-
-    .more-btn[hidden] {
-      display: none;
-    }
-
     code {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
@@ -1564,10 +1567,6 @@
 
       .side-panel {
         transform: none;
-      }
-
-      .side-more-wrap {
-        justify-content: center;
       }
 
     }
@@ -1875,10 +1874,6 @@
         margin-left: 0;
       }
 
-      .more-wrap {
-        margin-top: 18px;
-      }
-
       .empty-state {
         padding: 52px 16px;
       }
@@ -2035,9 +2030,6 @@
             <h2>数字资产快讯</h2>
           </div>
           <div class="jinse-list" id="jinseList"></div>
-          <div class="more-wrap side-more-wrap">
-            <button class="more-btn" id="jinseMoreBtn" type="button" hidden>加载更多</button>
-          </div>
         </aside>
       </div>
     </div>
@@ -2135,7 +2127,6 @@
         themeToggle: document.getElementById("themeToggle"),
         newsGrid: document.getElementById("newsGrid"),
         emptyState: document.getElementById("emptyState"),
-        jinseMoreBtn: document.getElementById("jinseMoreBtn"),
         jinseList: document.getElementById("jinseList"),
         topicTabs: document.getElementById("topicTabs"),
         intelActions: document.getElementById("intelActions"),
@@ -2363,15 +2354,14 @@
         toggleSpeech(id);
       });
 
-      els.jinseMoreBtn.addEventListener("click", function () {
-        const previousJinseCount = state.visibleJinseCount;
-        state.visibleJinseCount += 6;
-        appendMoreJinse(previousJinseCount);
-        syncJinseMoreButton();
-      });
-
       window.addEventListener("scroll", function () {
-        if (isNearPageBottom()) {
+        if (!isNearPageBottom()) {
+          return;
+        }
+
+        if (document.body.classList.contains("crypto-view-mode")) {
+          loadMoreJinse();
+        } else {
           loadMoreNews();
         }
       }, { passive: true });
@@ -2690,6 +2680,9 @@
         els.cryptoViewBtn.classList.toggle("is-active", isActive);
         els.cryptoViewBtn.setAttribute("aria-pressed", String(isActive));
         els.cryptoViewBtn.textContent = isActive ? "返回主新闻" : "数字资产快讯";
+        if (isActive) {
+          window.requestAnimationFrame(syncJinseMoreButton);
+        }
       }
 
       function closeHighlightsModal() {
@@ -3210,6 +3203,17 @@
         state.renderedJinseCount = visibleItems.length;
         syncSummaryToggles(els.jinseList);
         syncJinseMoreButton();
+      }
+
+      function loadMoreJinse() {
+        const filteredItems = getFilteredJinseItems();
+        if (filteredItems.length <= state.visibleJinseCount) {
+          return;
+        }
+
+        const previousCount = state.visibleJinseCount;
+        state.visibleJinseCount = Math.min(filteredItems.length, state.visibleJinseCount + 12);
+        appendMoreJinse(previousCount);
       }
 
       function renderList(forceFullRender) {
@@ -3890,7 +3894,14 @@
       }
 
       function syncJinseMoreButton() {
-        els.jinseMoreBtn.hidden = getFilteredJinseItems().length <= state.visibleJinseCount;
+        const hasMoreJinse = getFilteredJinseItems().length > state.visibleJinseCount;
+        if (
+          hasMoreJinse &&
+          document.body.classList.contains("crypto-view-mode") &&
+          isNearPageBottom()
+        ) {
+          window.requestAnimationFrame(loadMoreJinse);
+        }
       }
 
       function toggleSummary(target) {
