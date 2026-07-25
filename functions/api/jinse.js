@@ -621,12 +621,14 @@ function mergeItems(...args) {
   return items;
 }
 
-function jsonResponse(body, status = 200) {
+function jsonResponse(body, status = 200, cacheable = false) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
+      "cache-control": cacheable
+        ? "public, max-age=60, stale-while-revalidate=300"
+        : "no-store",
     },
   });
 }
@@ -637,6 +639,14 @@ export async function onRequestGet(context) {
     1,
     Math.min(80, Number.parseInt(requestUrl.searchParams.get("limit") || "50", 10) || 50),
   );
+  const cacheUrl = new URL(requestUrl.origin + requestUrl.pathname);
+  cacheUrl.searchParams.set("limit", String(limit));
+  const cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
+  const edgeCache = caches.default;
+  const cachedResponse = await edgeCache.match(cacheKey);
+  if (cachedResponse) {
+    return cachedResponse;
+  }
 
   try {
     const [jinseHtml, foresightHtml, odailyPayload, panewsPayload] = await Promise.all([
@@ -665,7 +675,7 @@ export async function onRequestGet(context) {
     if (!items.length) {
       throw new Error("Failed to fetch Jinse, Foresight, Odaily, and PANews news");
     }
-    return jsonResponse(
+    const response = jsonResponse(
       {
         siteTitle: "数字资产快讯",
         sourceUrl: LIVES_URL,
@@ -678,7 +688,10 @@ export async function onRequestGet(context) {
         isLive: true,
       },
       200,
+      true,
     );
+    context.waitUntil(edgeCache.put(cacheKey, response.clone()));
+    return response;
   } catch (error) {
     return jsonResponse(
       {
