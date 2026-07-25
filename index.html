@@ -2087,6 +2087,8 @@
   <script>
     (function () {
       const THEME_STORAGE_KEY = "peopleFinanceTheme";
+      const NEWS_CACHE_KEY = "peopleFinanceNewsPayloadV1";
+      const JINSE_CACHE_KEY = "peopleFinanceCryptoPayloadV1";
       const THEMES = {
         "deep-coffee-gold": {
           label: "深咖金主题",
@@ -2375,6 +2377,7 @@
         stopSpeech();
       });
 
+      restoreCachedFeeds();
       loadNews(false);
       loadJinse();
       window.setInterval(function () {
@@ -2416,27 +2419,17 @@
 
         try {
           const currentVisibleCount = state.visibleCount || 36;
-          const response = await fetch("/api/news?pages=8", { cache: "no-store" });
+          const response = await fetch("/api/news?pages=8");
           if (!response.ok) {
             throw new Error("HTTP " + response.status);
           }
 
           const payload = await response.json();
+          writeCachedPayload(NEWS_CACHE_KEY, payload);
           if (forceReset) {
             stopSpeech();
           }
-          state.items = enrichItems(Array.isArray(payload.items) ? payload.items : [], "news");
-          state.visibleCount = forceReset
-            ? Math.min(state.items.length, 36)
-            : Math.min(state.items.length, Math.max(currentVisibleCount, 36));
-          state.renderedCount = 0;
-          state.expandedIds = new Set();
-          renderMeta(payload);
-          renderIntelligence();
-          renderTopicTabs();
-          renderList(true);
-          syncMoreButton();
-          syncJinseMoreButton();
+          applyNewsPayload(payload, forceReset, currentVisibleCount);
         } catch (error) {
           setHeaderStamp("实时接口请求失败");
           if (!state.items.length) {
@@ -2456,34 +2449,83 @@
       async function loadJinse() {
         try {
           const currentVisibleJinseCount = state.visibleJinseCount || 30;
-          const response = await fetch("/api/jinse?limit=50&t=" + Date.now(), { cache: "no-store" });
+          const response = await fetch("/api/jinse?limit=50");
           if (!response.ok) {
             throw new Error("HTTP " + response.status);
           }
           const payload = await response.json();
-          state.jinseItems = enrichItems(Array.isArray(payload.items) ? payload.items : [], "jinse");
-          state.visibleJinseCount = Math.min(
-            state.jinseItems.length,
-            Math.max(currentVisibleJinseCount, 30)
-          );
-          if (state.searchQuery) {
-            els.jinseList.innerHTML = '<div class="jinse-empty">未找到相关金色财经新闻。</div>';
-          }
-          state.renderedJinseCount = 0;
-          renderIntelligence();
-          renderTopicTabs();
-          renderJinse(true);
-          syncMoreButton();
-          syncJinseMoreButton();
+          writeCachedPayload(JINSE_CACHE_KEY, payload);
+          applyJinsePayload(payload, currentVisibleJinseCount);
         } catch (error) {
-          state.jinseItems = [];
-          state.visibleJinseCount = 0;
-          state.renderedJinseCount = 0;
-          renderJinse(true);
+          if (!state.jinseItems.length) {
+            state.jinseItems = [];
+            state.visibleJinseCount = 0;
+            state.renderedJinseCount = 0;
+            renderJinse(true);
+          }
           syncMoreButton();
           syncJinseMoreButton();
           console.error(error);
         }
+      }
+
+      function readCachedPayload(storageKey) {
+        try {
+          const value = localStorage.getItem(storageKey);
+          return value ? JSON.parse(value) : null;
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function writeCachedPayload(storageKey, payload) {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(payload));
+        } catch (error) {}
+      }
+
+      function restoreCachedFeeds() {
+        const newsPayload = readCachedPayload(NEWS_CACHE_KEY);
+        if (newsPayload && Array.isArray(newsPayload.items) && newsPayload.items.length) {
+          applyNewsPayload(newsPayload, false, 36);
+        }
+
+        const jinsePayload = readCachedPayload(JINSE_CACHE_KEY);
+        if (jinsePayload && Array.isArray(jinsePayload.items) && jinsePayload.items.length) {
+          applyJinsePayload(jinsePayload, 30);
+        }
+      }
+
+      function applyNewsPayload(payload, forceReset, currentVisibleCount) {
+        state.items = enrichItems(Array.isArray(payload.items) ? payload.items : [], "news");
+        state.visibleCount = forceReset
+          ? Math.min(state.items.length, 36)
+          : Math.min(state.items.length, Math.max(currentVisibleCount || 36, 36));
+        state.renderedCount = 0;
+        state.expandedIds = new Set();
+        renderMeta(payload);
+        renderIntelligence();
+        renderTopicTabs();
+        renderList(true);
+        syncMoreButton();
+        syncJinseMoreButton();
+      }
+
+      function applyJinsePayload(payload, currentVisibleJinseCount) {
+        state.jinseItems = enrichItems(Array.isArray(payload.items) ? payload.items : [], "jinse");
+        state.visibleJinseCount = Math.min(
+          state.jinseItems.length,
+          Math.max(currentVisibleJinseCount || 30, 30)
+        );
+        if (state.searchQuery) {
+          els.jinseList.innerHTML = '<div class="jinse-empty">未找到相关数字资产新闻。</div>';
+        }
+        state.renderedJinseCount = 0;
+        renderIntelligence();
+        renderTopicTabs();
+        renderJinse(true);
+        syncMoreButton();
+        syncJinseMoreButton();
       }
 
       function refreshFilteredViews() {
