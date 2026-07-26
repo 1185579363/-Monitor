@@ -580,17 +580,21 @@ function extractPanewsItems(payload, limit) {
 }
 
 function extractBlockbeatsItems(html, limit) {
-  const dateMatch = String(html || "").match(
-    /<div\b[^>]*class="[^"]*\bflash-list-today\b[^"]*"[^>]*>\s*(\d{4}-\d{2}-\d{2})\s*<\/div>/i,
-  );
-  const pageDate = dateMatch ? dateMatch[1] : "";
+  const pageHtml = String(html || "");
+  const datePattern =
+    /<div\b[^>]*class="[^"]*\bflash-list-today\b[^"]*"[^>]*>\s*(\d{4}-\d{2}-\d{2})\s*<\/div>/gi;
+  const dateMarkers = [];
+  let dateMatch = null;
+  while ((dateMatch = datePattern.exec(pageHtml)) !== null) {
+    dateMarkers.push({ index: dateMatch.index, date: dateMatch[1] });
+  }
   const pattern =
     /<a\b([^>]*\bclass="[^"]*\bnews-flash-title\b[^"]*"[^>]*)>([\s\S]*?)<\/a>[\s\S]*?<div\b[^>]*class="[^"]*\bnews-flash-item-content\b[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
   const items = [];
   const seenUrls = new Set();
   let match = null;
 
-  while ((match = pattern.exec(String(html || ""))) !== null) {
+  while ((match = pattern.exec(pageHtml)) !== null) {
     const attrs = match[1];
     const hrefMatch = attrs.match(/\bhref="([^"]+)"/i);
     const titleMatch = attrs.match(/\btitle="([^"]+)"/i);
@@ -602,8 +606,11 @@ function extractBlockbeatsItems(html, limit) {
     const title = stripTags(decodeHtml(titleMatch[1]));
     const summary = stripTags(match[3]);
     const timeLabel = timeMatch[1];
-    const parsedTimestamp = pageDate
-      ? Date.parse(`${pageDate}T${timeLabel}:00+08:00`)
+    const itemDate = dateMarkers
+      .filter((marker) => marker.index <= match.index)
+      .at(-1)?.date || "";
+    const parsedTimestamp = itemDate
+      ? Date.parse(`${itemDate}T${timeLabel}:00+08:00`)
       : parseTimeLabelToday(timeLabel);
     const timestamp = Number.isFinite(parsedTimestamp) ? parsedTimestamp : parseTimeLabelToday(timeLabel);
     if (title.length <= 2 || summary.length <= 2 || seenUrls.has(url)) {
