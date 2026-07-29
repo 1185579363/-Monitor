@@ -8,6 +8,10 @@ const PANEWS_NEWSFLASH_URL = "https://www.panewslab.com/zh/newsflash";
 const PANEWS_API_URL = "https://universal-api.panewslab.com/articles";
 const BLOCKBEATS_BASE_URL = "https://www.theblockbeats.info";
 const BLOCKBEATS_NEWSFLASH_URL = `${BLOCKBEATS_BASE_URL}/newsflash`;
+const BLOCKBEATS_API_URL = "https://api.blockbeats.cn/v2/newsflash/list";
+const BLOCKBEATS_API_PATH = "/v2/newsflash/list";
+const BLOCKBEATS_APP_KEY = "bb_demo_app";
+const BLOCKBEATS_APP_SECRET = "bb_demo_secret_2026_01";
 const SHANGHAI_TZ = "Asia/Shanghai";
 
 function absoluteUrl(url) {
@@ -580,21 +584,17 @@ function extractPanewsItems(payload, limit) {
 }
 
 function extractBlockbeatsItems(html, limit) {
-  const pageHtml = String(html || "");
-  const datePattern =
-    /<div\b[^>]*class="[^"]*\bflash-list-today\b[^"]*"[^>]*>\s*(\d{4}-\d{2}-\d{2})\s*<\/div>/gi;
-  const dateMarkers = [];
-  let dateMatch = null;
-  while ((dateMatch = datePattern.exec(pageHtml)) !== null) {
-    dateMarkers.push({ index: dateMatch.index, date: dateMatch[1] });
-  }
+  const dateMatch = String(html || "").match(
+    /<div\b[^>]*class="[^"]*\bflash-list-today\b[^"]*"[^>]*>\s*(\d{4}-\d{2}-\d{2})\s*<\/div>/i,
+  );
+  const pageDate = dateMatch ? dateMatch[1] : "";
   const pattern =
     /<a\b([^>]*\bclass="[^"]*\bnews-flash-title\b[^"]*"[^>]*)>([\s\S]*?)<\/a>[\s\S]*?<div\b[^>]*class="[^"]*\bnews-flash-item-content\b[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
   const items = [];
   const seenUrls = new Set();
   let match = null;
 
-  while ((match = pattern.exec(pageHtml)) !== null) {
+  while ((match = pattern.exec(String(html || ""))) !== null) {
     const attrs = match[1];
     const hrefMatch = attrs.match(/\bhref="([^"]+)"/i);
     const titleMatch = attrs.match(/\btitle="([^"]+)"/i);
@@ -606,11 +606,8 @@ function extractBlockbeatsItems(html, limit) {
     const title = stripTags(decodeHtml(titleMatch[1]));
     const summary = stripTags(match[3]);
     const timeLabel = timeMatch[1];
-    const itemDate = dateMarkers
-      .filter((marker) => marker.index <= match.index)
-      .at(-1)?.date || "";
-    const parsedTimestamp = itemDate
-      ? Date.parse(`${itemDate}T${timeLabel}:00+08:00`)
+    const parsedTimestamp = pageDate
+      ? Date.parse(`${pageDate}T${timeLabel}:00+08:00`)
       : parseTimeLabelToday(timeLabel);
     const timestamp = Number.isFinite(parsedTimestamp) ? parsedTimestamp : parseTimeLabelToday(timeLabel);
     if (title.length <= 2 || summary.length <= 2 || seenUrls.has(url)) {
@@ -630,6 +627,137 @@ function extractBlockbeatsItems(html, limit) {
     if (items.length >= limit) {
       break;
     }
+  }
+
+  return items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+}
+
+function bytesToHex(bytes) {
+  return Array.from(new Uint8Array(bytes))
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function createBlockbeatsNonce() {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return bytesToHex(bytes);
+}
+
+async function buildBlockbeatsApiHeaders(params) {
+  const timestamp = Date.now().toString();
+  const nonce = createBlockbeatsNonce();
+  const queryString = Object.keys(params)
+    .sort()
+    .map((key) => `${key}=${params[key] == null ? "" : params[key]}`)
+    .join("&");
+  const canonical = `GET|${BLOCKBEATS_API_PATH}|${timestamp}|${nonce}|${queryString}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(BLOCKBEATS_APP_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(canonical),
+  );
+  return {
+    Accept: "application/json",
+    Referer: BLOCKBEATS_NEWSFLASH_URL,
+    "X-App-Key": BLOCKBEATS_APP_KEY,
+    "X-Timestamp": timestamp,
+    "X-Nonce": nonce,
+    "X-Signature": bytesToHex(signature),
+    "X-Encrypt": "false",
+  };
+}
+
+async function fetchBlockbeatsApiPage(params, retries = 2) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const url = new URL(BLOCKBEATS_API_URL);
+      Object.entries(params).forEach(([key, value]) => {
+        url.searchParams.set(key, value == null ? "" : String(value));
+      });
+      const response = await fetch(url, {
+        headers: await buildBlockbeatsApiHeaders(params),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const payload = await response.json();
+      if (!payload || payload.code !== 0 || !Array.isArray(payload.data && payload.data.list)) {
+        throw new Error("Invalid BlockBeats API payload");
+      }
+      return payload;
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
+function normalizeBlockbeatsApiItem(raw) {
+  const articleId = String(raw && (raw.article_id || raw.content_id || raw.id) || "").trim();
+  const title = stripTags(raw && raw.title || "");
+  const summary = stripTags(raw && (raw.content || raw.abstract) || "");
+  const rawTimestamp = Number(raw && raw.add_time || 0);
+  const timestamp = rawTimestamp > 100000000000 ? rawTimestamp : rawTimestamp * 1000;
+  if (title.length <= 2 || summary.length <= 2 || !articleId || !timestamp) {
+    return null;
+  }
+  const parts = getDateParts(timestamp);
+  return {
+    id: `blockbeats-${articleId}`,
+    title,
+    summary,
+    timeLabel: `${parts.hour}:${parts.minute}`,
+    source: "BlockBeats",
+    url: `${BLOCKBEATS_BASE_URL}/flash/${articleId}`,
+    timestamp,
+  };
+}
+
+async function fetchBlockbeatsApiItems(limit) {
+  const targetLimit = Math.min(Math.max(Number(limit) || 1, 1), 100);
+  const pageSize = Math.min(targetLimit, 50);
+  const pageCount = Math.ceil(targetLimit / pageSize);
+  const items = [];
+  const seenUrls = new Set();
+  let endTime = "";
+
+  for (let page = 1; page <= pageCount; page += 1) {
+    const params = {
+      page,
+      limit: pageSize,
+      ios: -2,
+      end_time: endTime,
+      detective: -2,
+    };
+    const payload = await fetchBlockbeatsApiPage(params);
+    const rawItems = payload.data.list;
+    for (const raw of rawItems) {
+      const item = normalizeBlockbeatsApiItem(raw);
+      if (!item || seenUrls.has(item.url)) {
+        continue;
+      }
+      seenUrls.add(item.url);
+      items.push(item);
+      if (items.length >= targetLimit) {
+        break;
+      }
+    }
+    if (items.length >= targetLimit || rawItems.length < pageSize) {
+      break;
+    }
+    endTime = rawItems[rawItems.length - 1].add_time || "";
   }
 
   return items.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -742,11 +870,11 @@ export async function onRequestGet(context) {
   const requestUrl = new URL(context.request.url);
   const limit = Math.max(
     1,
-    Math.min(100, Number.parseInt(requestUrl.searchParams.get("limit") || "100", 10) || 100),
+    Math.min(200, Number.parseInt(requestUrl.searchParams.get("limit") || "200", 10) || 200),
   );
   const cacheUrl = new URL(requestUrl.origin + requestUrl.pathname);
   cacheUrl.searchParams.set("limit", String(limit));
-  cacheUrl.searchParams.set("version", "foresight-timefix-1");
+  cacheUrl.searchParams.set("version", "crypto-200-blockbeats-api-1");
   const cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
   const edgeCache = caches.default;
   const cachedResponse = await edgeCache.match(cacheKey);
@@ -755,21 +883,22 @@ export async function onRequestGet(context) {
   }
 
   try {
-    const [jinseHtml, foresightHtml, odailyPayload, panewsPayload, blockbeatsHtml] = await Promise.all([
+    const [jinseHtml, foresightHtml, odailyPayload, panewsPayload, blockbeatsApiItems, blockbeatsHtml] = await Promise.all([
       fetchHtmlWithRetry(LIVES_URL, 2).catch(() => ""),
       fetchHtmlWithRetry(FORESIGHT_NEWS_URL, 2).catch(() => ""),
       fetchJsonWithRetry(
         ODAILY_API_URL,
-        { page: 1, size: limit },
+        { page: 1, size: Math.min(limit, 80) },
         2,
         { Referer: ODAILY_NEWSFLASH_URL, "x-locale": "zh-CN" },
       ).catch(() => null),
       fetchJsonWithRetry(
         PANEWS_API_URL,
-        { type: "NEWS", isShowInList: true, take: limit, skip: 0 },
+        { type: "NEWS", isShowInList: true, take: Math.min(limit, 80), skip: 0 },
         2,
         { Referer: PANEWS_NEWSFLASH_URL, "PA-Accept-Language": "zh" },
       ).catch(() => null),
+      fetchBlockbeatsApiItems(Math.min(limit, 100)).catch(() => []),
       fetchHtmlWithRetry(BLOCKBEATS_NEWSFLASH_URL, 2).catch(() => ""),
     ]);
     const visibleItems = jinseHtml ? extractVisibleItems(jinseHtml) : [];
@@ -778,10 +907,12 @@ export async function onRequestGet(context) {
     const foresightItems = foresightHtml ? extractForesightItems(foresightHtml, limit) : [];
     const odailyItems = odailyPayload ? extractOdailyItems(odailyPayload, limit) : [];
     const panewsItems = panewsPayload ? extractPanewsItems(panewsPayload, limit) : [];
-    const blockbeatsItems = blockbeatsHtml ? extractBlockbeatsItems(blockbeatsHtml, limit) : [];
+    const blockbeatsItems = blockbeatsApiItems.length
+      ? blockbeatsApiItems
+      : (blockbeatsHtml ? extractBlockbeatsItems(blockbeatsHtml, limit) : []);
     const items = mergeItems(jinseItems, foresightItems, odailyItems, panewsItems, blockbeatsItems, limit);
     if (!items.length) {
-      throw new Error("Failed to fetch Jinse, Foresight, Odaily, and PANews news");
+      throw new Error("Failed to fetch digital asset news");
     }
     const response = jsonResponse(
       {
