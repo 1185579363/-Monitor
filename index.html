@@ -2029,6 +2029,7 @@
           <div class="side-heading">
             <h2>数字资产快讯</h2>
           </div>
+          <div class="topic-tabs jinse-source-tabs" id="jinseSourceTabs" aria-label="数字资产信息源筛选"></div>
           <div class="jinse-list" id="jinseList"></div>
         </aside>
       </div>
@@ -2080,9 +2081,9 @@
     (function () {
       const THEME_STORAGE_KEY = "peopleFinanceTheme";
       const NEWS_CACHE_KEY = "peopleFinanceNewsPayloadV1";
-      const JINSE_CACHE_KEY = "peopleFinanceCryptoPayloadV3";
+      const JINSE_CACHE_KEY = "peopleFinanceCryptoPayloadV4";
       const NEWS_BOOTSTRAP_URL = "/assets/bootstrap/news.json?v=20260725";
-      const JINSE_BOOTSTRAP_URL = "/assets/bootstrap/crypto.json?v=20260725-timefix";
+      const JINSE_BOOTSTRAP_URL = "/assets/bootstrap/crypto.json?v=20260729-200";
       const THEMES = {
         "deep-coffee-gold": {
           label: "深咖金主题",
@@ -2114,6 +2115,7 @@
         statusText: "正在连接实时新闻接口",
         expandedIds: new Set(),
         activeTopic: "all",
+        activeJinseSource: "all",
         sortMode: "smart",
         theme: normalizeTheme(document.documentElement.dataset.theme)
       };
@@ -2128,6 +2130,7 @@
         newsGrid: document.getElementById("newsGrid"),
         emptyState: document.getElementById("emptyState"),
         jinseList: document.getElementById("jinseList"),
+        jinseSourceTabs: document.getElementById("jinseSourceTabs"),
         topicTabs: document.getElementById("topicTabs"),
         intelActions: document.getElementById("intelActions"),
         cryptoViewBtn: document.getElementById("cryptoViewBtn"),
@@ -2168,6 +2171,14 @@
         { id: "source:jingji-global", label: "21财经·全球", source: "21财经" }
       ];
 
+      const JINSE_SOURCE_FILTERS = [
+        "BlockBeats",
+        "Odaily星球日报",
+        "Foresight News",
+        "PANews",
+        "金色财经"
+      ];
+
       const SOURCE_LOGOS = Object.freeze({
         "人民财讯": "assets/source-logos/stcn.ico",
         "证券时报·e公司": "assets/source-logos/stcn.ico",
@@ -2190,6 +2201,7 @@
 
       applyTheme(state.theme);
       renderTopicTabs();
+      renderJinseSourceTabs();
 
       els.refreshBtn.addEventListener("click", function () {
         loadNews(true);
@@ -2289,6 +2301,19 @@
         state.activeTopic = button.getAttribute("data-topic-id") || "all";
         syncTopicTabs();
         refreshFilteredViews();
+      });
+
+      els.jinseSourceTabs.addEventListener("click", function (event) {
+        const button = event.target.closest("[data-jinse-source]");
+        if (!button) {
+          return;
+        }
+
+        state.activeJinseSource = button.getAttribute("data-jinse-source") || "all";
+        state.visibleJinseCount = 30;
+        state.renderedJinseCount = 0;
+        syncJinseSourceTabs();
+        renderJinse(true);
       });
 
       document.querySelectorAll("[data-sort-mode]").forEach(function (button) {
@@ -2443,7 +2468,7 @@
       async function loadJinse() {
         try {
           const currentVisibleJinseCount = state.visibleJinseCount || 30;
-          const response = await fetch("/api/jinse?limit=100");
+          const response = await fetch("/api/jinse?limit=200");
           if (!response.ok) {
             throw new Error("HTTP " + response.status);
           }
@@ -3131,6 +3156,25 @@
         });
       }
 
+      function renderJinseSourceTabs() {
+        const tabs = ["all"].concat(JINSE_SOURCE_FILTERS);
+        els.jinseSourceTabs.innerHTML = tabs.map(function (source) {
+          const label = source === "all" ? "全部" : source;
+          return '<button class="topic-btn ' + (source === state.activeJinseSource ? 'is-active' : '') + '" type="button" data-jinse-source="' + escapeAttr(source) + '">' +
+            escapeHtml(label) +
+          '</button>';
+        }).join("");
+      }
+
+      function syncJinseSourceTabs() {
+        els.jinseSourceTabs.querySelectorAll("[data-jinse-source]").forEach(function (button) {
+          button.classList.toggle(
+            "is-active",
+            button.getAttribute("data-jinse-source") === state.activeJinseSource
+          );
+        });
+      }
+
       function renderMeta(payload) {
         if (payload.isFallback) {
           state.statusText = payload.generatedAtLabel
@@ -3165,7 +3209,11 @@
         const filteredItems = getFilteredJinseItems();
         if (!filteredItems.length) {
           els.jinseList.innerHTML =
-            '<div class="jinse-empty">暂时没有抓到数字资产快讯，请稍后自动刷新。</div>';
+            '<div class="jinse-empty">' +
+              (state.activeJinseSource === "all"
+                ? '暂时没有抓到数字资产快讯，请稍后自动刷新。'
+                : '暂时没有该信息源的数字资产快讯。') +
+            '</div>';
           state.renderedJinseCount = 0;
           syncJinseMoreButton();
           return;
@@ -3600,7 +3648,9 @@
 
       function getFilteredJinseItems() {
         return sortItems(state.jinseItems.filter(function (item) {
-          return matchesSearch(item) && matchesQuickFilter(item);
+          const matchesSource = state.activeJinseSource === "all" ||
+            String(item && item.source || "") === state.activeJinseSource;
+          return matchesSource && matchesSearch(item) && matchesQuickFilter(item);
         }));
       }
 
